@@ -122,7 +122,15 @@ YOOMONEY_TOKEN="ваш_access_token" npm run example:account
 
 ---
 
-## Быстрый старт
+## Установка
+
+```bash
+npm install @fw42/yoomoney
+# или
+bun add @fw42/yoomoney
+```
+
+## Быстрый старт (из исходников)
 
 ### Node.js
 
@@ -148,7 +156,7 @@ Bun нативно исполняет TypeScript, сборка не нужна.
 ## Использование
 
 ```typescript
-import { YooMoneyClient } from "yoomoney-sdk";
+import { YooMoneyClient } from "@fw42/yoomoney";
 
 const client = new YooMoneyClient({
   token: "your_oauth_token",
@@ -191,7 +199,7 @@ const ops = await client.waitForPayment("order-42", {
 Создавайте ссылки на оплату через YooMoney quickpay. Указывайте `label` чтобы потом идентифицировать платёж.
 
 ```typescript
-import { generatePaymentLink, generatePaymentForm } from "yoomoney-sdk";
+import { generatePaymentLink, generatePaymentForm } from "@fw42/yoomoney";
 
 // Ссылка — открывается в браузере, пользователь сразу видит форму оплаты
 const link = generatePaymentLink({
@@ -230,7 +238,7 @@ YooMoney не передаёт «memo» или произвольный комм
 ### Способ 1: Поллинг (простой)
 
 ```typescript
-import { YooMoneyClient, generatePaymentLink } from "yoomoney-sdk";
+import { YooMoneyClient, generatePaymentLink } from "@fw42/yoomoney";
 
 const client = new YooMoneyClient({ token: "..." });
 const label = `order-${Date.now()}`;
@@ -266,7 +274,7 @@ YooMoney отправляет HTTP POST на ваш сервер при кажд
 import {
   parseNotification,
   verifyNotificationSignature,
-} from "yoomoney-sdk";
+} from "@fw42/yoomoney";
 
 // В вашем HTTP-сервере (Express, Hono, Bun.serve и т.д.)
 async function handleWebhook(requestBody: string) {
