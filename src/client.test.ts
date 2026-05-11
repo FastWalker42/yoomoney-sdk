@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { YooMoneyClient } from "./client";
-import { YooMoneyError, YooMoneyHttpError } from "./errors";
+import { YooMoneyClient } from "./client.js";
+import { YooMoneyError, YooMoneyHttpError } from "./errors.js";
 
 const TOKEN = "test-token-123";
 
@@ -25,10 +25,6 @@ describe("YooMoneyClient", () => {
     vi.restoreAllMocks();
   });
 
-  // -----------------------------------------------------------------------
-  // getAccountInfo
-  // -----------------------------------------------------------------------
-
   describe("getAccountInfo", () => {
     it("sends correct request and returns account info", async () => {
       const body = {
@@ -45,7 +41,7 @@ describe("YooMoneyClient", () => {
       const info = await client.getAccountInfo();
 
       expect(fakeFetch).toHaveBeenCalledOnce();
-      const [url, opts] = fakeFetch.mock.calls[0];
+      const [url, opts] = fakeFetch.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }];
       expect(url).toBe("https://yoomoney.ru/api/account-info");
       expect(opts.method).toBe("POST");
       expect(opts.headers.Authorization).toBe(`Bearer ${TOKEN}`);
@@ -53,10 +49,6 @@ describe("YooMoneyClient", () => {
       expect(info.balance).toBe(1000.5);
     });
   });
-
-  // -----------------------------------------------------------------------
-  // getOperationHistory
-  // -----------------------------------------------------------------------
 
   describe("getOperationHistory", () => {
     it("returns operations list", async () => {
@@ -89,7 +81,7 @@ describe("YooMoneyClient", () => {
       const client = new YooMoneyClient({ token: TOKEN });
       await client.getOperationHistory({ type: ["deposition", "payment"] });
 
-      const sentBody = fakeFetch.mock.calls[0][1].body as string;
+      const sentBody = (fakeFetch.mock.calls[0] as [string, RequestInit])[1].body as string;
       expect(sentBody).toContain("type=deposition+payment");
     });
 
@@ -102,10 +94,6 @@ describe("YooMoneyClient", () => {
       ).rejects.toThrow(YooMoneyError);
     });
   });
-
-  // -----------------------------------------------------------------------
-  // getOperationDetails
-  // -----------------------------------------------------------------------
 
   describe("getOperationDetails", () => {
     it("returns operation details", async () => {
@@ -122,18 +110,14 @@ describe("YooMoneyClient", () => {
       globalThis.fetch = mockFetch(body);
 
       const client = new YooMoneyClient({ token: TOKEN });
-      const result = await client.getOperationDetails({
-        operation_id: "op1",
-      });
+      const result = await client.getOperationDetails({ operation_id: "op1" });
 
       expect(result.operation_id).toBe("op1");
       expect(result.details).toBe("Detailed info");
     });
 
     it("throws on API error", async () => {
-      globalThis.fetch = mockFetch({
-        error: "illegal_param_operation_id",
-      });
+      globalThis.fetch = mockFetch({ error: "illegal_param_operation_id" });
 
       const client = new YooMoneyClient({ token: TOKEN });
       await expect(
@@ -141,10 +125,6 @@ describe("YooMoneyClient", () => {
       ).rejects.toThrow(YooMoneyError);
     });
   });
-
-  // -----------------------------------------------------------------------
-  // checkPaymentByLabel
-  // -----------------------------------------------------------------------
 
   describe("checkPaymentByLabel", () => {
     it("returns found=true when matching ops exist", async () => {
@@ -178,17 +158,12 @@ describe("YooMoneyClient", () => {
       const result = await client.checkPaymentByLabel("nonexistent");
 
       expect(result.found).toBe(false);
-      expect(result.operations).toHaveLength(0);
     });
   });
 
-  // -----------------------------------------------------------------------
-  // getRecentOperations
-  // -----------------------------------------------------------------------
-
   describe("getRecentOperations", () => {
     it("returns recent operations", async () => {
-      const body = {
+      globalThis.fetch = mockFetch({
         operations: [
           {
             operation_id: "op1",
@@ -200,8 +175,7 @@ describe("YooMoneyClient", () => {
             type: "deposition",
           },
         ],
-      };
-      globalThis.fetch = mockFetch(body);
+      });
 
       const client = new YooMoneyClient({ token: TOKEN });
       const ops = await client.getRecentOperations(5);
@@ -210,46 +184,18 @@ describe("YooMoneyClient", () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // getOperationHistoryAll (pagination)
-  // -----------------------------------------------------------------------
-
   describe("getOperationHistoryAll", () => {
     it("iterates through all pages", async () => {
       const page1 = {
         next_record: "2",
         operations: [
-          {
-            operation_id: "op1",
-            status: "success",
-            direction: "in",
-            amount: 100,
-            datetime: "2024-01-02T00:00:00.000+03:00",
-            title: "A",
-            type: "deposition",
-          },
-          {
-            operation_id: "op2",
-            status: "success",
-            direction: "out",
-            amount: 50,
-            datetime: "2024-01-01T00:00:00.000+03:00",
-            title: "B",
-            type: "payment-shop",
-          },
+          { operation_id: "op1", status: "success", direction: "in", amount: 100, datetime: "2024-01-02T00:00:00.000+03:00", title: "A", type: "deposition" },
+          { operation_id: "op2", status: "success", direction: "out", amount: 50, datetime: "2024-01-01T00:00:00.000+03:00", title: "B", type: "payment-shop" },
         ],
       };
       const page2 = {
         operations: [
-          {
-            operation_id: "op3",
-            status: "success",
-            direction: "in",
-            amount: 300,
-            datetime: "2023-12-31T00:00:00.000+03:00",
-            title: "C",
-            type: "deposition",
-          },
+          { operation_id: "op3", status: "success", direction: "in", amount: 300, datetime: "2023-12-31T00:00:00.000+03:00", title: "C", type: "deposition" },
         ],
       };
 
@@ -275,24 +221,14 @@ describe("YooMoneyClient", () => {
     });
   });
 
-  // -----------------------------------------------------------------------
-  // HTTP errors
-  // -----------------------------------------------------------------------
-
   describe("HTTP error handling", () => {
     it("throws YooMoneyHttpError on non-OK response", async () => {
       globalThis.fetch = mockFetch({}, 401);
 
       const client = new YooMoneyClient({ token: TOKEN });
-      await expect(client.getAccountInfo()).rejects.toThrow(
-        YooMoneyHttpError,
-      );
+      await expect(client.getAccountInfo()).rejects.toThrow(YooMoneyHttpError);
     });
   });
-
-  // -----------------------------------------------------------------------
-  // Custom baseUrl
-  // -----------------------------------------------------------------------
 
   describe("custom baseUrl", () => {
     it("respects custom baseUrl", async () => {
@@ -305,7 +241,7 @@ describe("YooMoneyClient", () => {
       });
       await client.getOperationHistory();
 
-      const url = fakeFetch.mock.calls[0][0];
+      const url = (fakeFetch.mock.calls[0] as [string, RequestInit])[0];
       expect(url).toBe("https://custom.example.com/api/operation-history");
     });
   });

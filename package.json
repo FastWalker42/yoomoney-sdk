@@ -1,7 +1,14 @@
 {
   "name": "yoomoney-sdk",
-  "version": "1.0.0",
-  "description": "TypeScript SDK for YooMoney Wallet API — check payments, view operation history and details",
+  "version": "2.0.0",
+  "description": "Runtime-agnostic TypeScript SDK for YooMoney Wallet API — payments, history, notifications, payment links",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -20,17 +27,15 @@
     "payment",
     "wallet",
     "api",
-    "sdk"
+    "sdk",
+    "bun",
+    "deno"
   ],
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^25.6.2",
     "tsx": "^4.19.0",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
-  },
-  "engines": {
-    "node": ">=18"
   },
   "files": [
     "dist",

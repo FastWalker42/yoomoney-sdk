@@ -1,7 +1,15 @@
-export { YooMoneyClient } from "./client";
-export { YooMoneyError, YooMoneyHttpError } from "./errors";
+export { YooMoneyClient } from "./client.js";
+export { YooMoneyError, YooMoneyHttpError } from "./errors.js";
+export { generatePaymentLink, generatePaymentForm } from "./payment-link.js";
+export {
+  verifyNotificationSignature,
+  parseNotification,
+} from "./notifications.js";
+
 export type {
   AccountInfo,
+  IncomingNotification,
+  NotificationType,
   Operation,
   OperationDetailsParams,
   OperationDetailsResponse,
@@ -11,6 +19,8 @@ export type {
   OperationStatus,
   OperationType,
   OperationTypeFilter,
+  PaymentLinkParams,
+  PaymentType,
   RecipientType,
   YooMoneyClientOptions,
-} from "./types";
+} from "./types.js";
