@@ -1,4 +1,4 @@
-import {
+import type {
   AccountInfo,
   Operation,
   OperationDetailsParams,
@@ -6,8 +6,8 @@ import {
   OperationHistoryParams,
   OperationHistoryResponse,
   YooMoneyClientOptions,
-} from "./types";
-import { YooMoneyError, YooMoneyHttpError } from "./errors";
+} from "./types.js";
+import { YooMoneyError, YooMoneyHttpError } from "./errors.js";
 
 const DEFAULT_BASE_URL = "https://yoomoney.ru";
 const DEFAULT_TIMEOUT = 10_000;
@@ -23,20 +23,14 @@ export class YooMoneyClient {
     this.timeout = options.timeout ?? DEFAULT_TIMEOUT;
   }
 
-  // -------------------------------------------------------------------------
+  // -----------------------------------------------------------------------
   // Public API
-  // -------------------------------------------------------------------------
+  // -----------------------------------------------------------------------
 
-  /** Retrieve general information about the user's account. */
   async getAccountInfo(): Promise<AccountInfo> {
     return this.post<AccountInfo>("/api/account-info");
   }
 
-  /**
-   * Fetch a page of operation history.
-   *
-   * Results are returned in reverse-chronological order.
-   */
   async getOperationHistory(
     params: OperationHistoryParams = {},
   ): Promise<OperationHistoryResponse> {
@@ -45,7 +39,6 @@ export class YooMoneyClient {
       "/api/operation-history",
       body,
     );
-
     if (data.error) {
       throw new YooMoneyError(
         `operation-history error: ${data.error}`,
@@ -55,11 +48,6 @@ export class YooMoneyClient {
     return data;
   }
 
-  /**
-   * Iterate over **all** pages of operation history matching the given filters.
-   *
-   * Yields individual {@link Operation} objects.
-   */
   async *getOperationHistoryAll(
     params: Omit<OperationHistoryParams, "start_record"> = {},
   ): AsyncGenerator<Operation> {
@@ -76,7 +64,6 @@ export class YooMoneyClient {
     } while (startRecord !== undefined);
   }
 
-  /** Fetch detailed information about a single operation. */
   async getOperationDetails(
     params: OperationDetailsParams,
   ): Promise<OperationDetailsResponse> {
@@ -87,7 +74,6 @@ export class YooMoneyClient {
       "/api/operation-details",
       body,
     );
-
     if (data.error) {
       throw new YooMoneyError(
         `operation-details error: ${data.error}`,
@@ -97,11 +83,6 @@ export class YooMoneyClient {
     return data;
   }
 
-  /**
-   * Convenience: find incoming (deposit) operations matching a label.
-   *
-   * Useful for verifying that a payment with a specific label has arrived.
-   */
   async checkPaymentByLabel(
     label: string,
   ): Promise<{ found: boolean; operations: Operation[] }> {
@@ -115,19 +96,38 @@ export class YooMoneyClient {
     };
   }
 
-  /**
-   * Convenience: get the N most recent operations.
-   */
-  async getRecentOperations(count: number = 10): Promise<Operation[]> {
+  async getRecentOperations(count = 10): Promise<Operation[]> {
     const page = await this.getOperationHistory({
       records: Math.min(Math.max(count, 1), 100),
     });
     return page.operations;
   }
 
-  // -------------------------------------------------------------------------
-  // Internal helpers
-  // -------------------------------------------------------------------------
+  /**
+   * Poll operation history until a payment with the given label appears.
+   * Resolves with the matching operations or rejects on timeout.
+   */
+  async waitForPayment(
+    label: string,
+    opts: { timeoutMs?: number; intervalMs?: number } = {},
+  ): Promise<Operation[]> {
+    const { timeoutMs = 300_000, intervalMs = 5_000 } = opts;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const result = await this.checkPaymentByLabel(label);
+      if (result.found) return result.operations;
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    throw new YooMoneyError(
+      `Payment with label "${label}" not found within ${timeoutMs}ms`,
+      "timeout",
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Internal
+  // -----------------------------------------------------------------------
 
   private buildHistoryBody(params: OperationHistoryParams): URLSearchParams {
     const body = new URLSearchParams();
@@ -150,10 +150,7 @@ export class YooMoneyClient {
     return body;
   }
 
-  private async post<T>(
-    path: string,
-    body?: URLSearchParams,
-  ): Promise<T> {
+  private async post<T>(path: string, body?: URLSearchParams): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeout);

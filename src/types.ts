@@ -1,10 +1,11 @@
-/** Direction of a financial transaction. */
+// ---------------------------------------------------------------------------
+// Common
+// ---------------------------------------------------------------------------
+
 export type OperationDirection = "in" | "out";
 
-/** Status of a payment / transfer. */
 export type OperationStatus = "success" | "refused" | "in_progress";
 
-/** Type of operation in the history. */
 export type OperationType =
   | "payment-shop"
   | "outgoing-transfer"
@@ -12,14 +13,15 @@ export type OperationType =
   | "incoming-transfer"
   | "incoming-transfer-protected";
 
-/** Filter for operation-history: deposit or payment. */
 export type OperationTypeFilter = "deposition" | "payment";
 
-/** Recipient identifier type for outgoing P2P transfers. */
 export type RecipientType = "account" | "phone" | "email";
 
-/** Account type returned by account-info. */
 export type AccountType = "personal" | "professional";
+
+export type PaymentType = "PC" | "AC";
+
+export type NotificationType = "p2p-incoming" | "card-incoming";
 
 // ---------------------------------------------------------------------------
 // account-info
@@ -50,19 +52,12 @@ export interface AccountInfo {
 // ---------------------------------------------------------------------------
 
 export interface OperationHistoryParams {
-  /** Filter by operation type(s). */
   type?: OperationTypeFilter | OperationTypeFilter[];
-  /** Filter payments by label. */
   label?: string;
-  /** Show operations from this datetime (ISO 8601). */
   from?: string;
-  /** Show operations until this datetime (ISO 8601). */
   till?: string;
-  /** Pagination cursor returned by a previous call. */
   start_record?: string;
-  /** Number of records per page (1–100, default 30). */
   records?: number;
-  /** Include full details for each operation. */
   details?: boolean;
 }
 
@@ -76,7 +71,6 @@ export interface Operation {
   type: OperationType;
   pattern_id?: string;
   label?: string;
-  /** Present only when details=true or fetched via operation-details. */
   details?: string;
   recipient?: string;
   recipient_type?: RecipientType;
@@ -108,14 +102,60 @@ export type OperationDetailsResponse = Operation & {
 };
 
 // ---------------------------------------------------------------------------
+// Payment link / form
+// ---------------------------------------------------------------------------
+
+export interface PaymentLinkParams {
+  /** Receiver wallet number. */
+  receiver: string;
+  /** Amount to charge from sender. */
+  sum: number;
+  /** Payment method: PC = wallet, AC = bank card. */
+  paymentType?: PaymentType;
+  /** Label for identifying this payment (up to 64 chars). */
+  label?: string;
+  /** URL to redirect sender after successful payment. */
+  successURL?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Notification (incoming transfer webhook)
+// ---------------------------------------------------------------------------
+
+export interface IncomingNotification {
+  notification_type: NotificationType;
+  operation_id: string;
+  amount: string;
+  withdraw_amount: string;
+  currency: string;
+  datetime: string;
+  sender: string;
+  codepro: string;
+  label: string;
+  unaccepted: string;
+  sign: string;
+  /** @deprecated Use `sign` instead. Removed after May 18, 2026. */
+  sha1_hash?: string;
+  test_notification?: string;
+  lastname?: string;
+  firstname?: string;
+  fathersname?: string;
+  email?: string;
+  phone?: string;
+  city?: string;
+  street?: string;
+  building?: string;
+  suite?: string;
+  flat?: string;
+  zip?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Client options
 // ---------------------------------------------------------------------------
 
 export interface YooMoneyClientOptions {
-  /** OAuth token with required permissions. */
   token: string;
-  /** Base URL override (default: https://yoomoney.ru). */
   baseUrl?: string;
-  /** Request timeout in ms (default: 10 000). */
   timeout?: number;
 }
