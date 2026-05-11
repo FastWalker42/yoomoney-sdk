@@ -1,0 +1,40 @@
+{
+  "name": "yoomoney-sdk",
+  "version": "1.0.0",
+  "description": "TypeScript SDK for YooMoney Wallet API — check payments, view operation history and details",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example:history": "tsx examples/get-history.ts",
+    "example:details": "tsx examples/get-details.ts",
+    "example:account": "tsx examples/get-account-info.ts",
+    "example:check": "tsx examples/check-payment.ts"
+  },
+  "keywords": [
+    "yoomoney",
+    "yandex-money",
+    "payment",
+    "wallet",
+    "api",
+    "sdk"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.6.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
