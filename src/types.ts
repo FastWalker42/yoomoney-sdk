@@ -102,6 +102,17 @@ export type OperationDetailsResponse = Operation & {
 };
 
 // ---------------------------------------------------------------------------
+// Check payment options
+// ---------------------------------------------------------------------------
+
+export interface CheckPaymentOptions {
+  /** Expected payment amount. When set, only operations with amount >= this value are considered valid. */
+  amount?: number;
+  /** Whether to require status === "success". Default: true. */
+  requireSuccess?: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Payment link / form
 // ---------------------------------------------------------------------------
 

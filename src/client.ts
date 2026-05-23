@@ -1,5 +1,6 @@
 import type {
   AccountInfo,
+  CheckPaymentOptions,
   Operation,
   OperationDetailsParams,
   OperationDetailsResponse,
@@ -85,14 +86,23 @@ export class YooMoneyClient {
 
   async checkPaymentByLabel(
     label: string,
+    opts: CheckPaymentOptions = {},
   ): Promise<{ found: boolean; operations: Operation[] }> {
     const page = await this.getOperationHistory({
       type: "deposition",
       label,
     });
+
+    const requireSuccess = opts.requireSuccess !== false;
+    const operations = page.operations.filter((op) => {
+      if (requireSuccess && op.status !== "success") return false;
+      if (opts.amount !== undefined && op.amount < opts.amount) return false;
+      return true;
+    });
+
     return {
-      found: page.operations.length > 0,
-      operations: page.operations,
+      found: operations.length > 0,
+      operations,
     };
   }
 
@@ -109,13 +119,13 @@ export class YooMoneyClient {
    */
   async waitForPayment(
     label: string,
-    opts: { timeoutMs?: number; intervalMs?: number } = {},
+    opts: { timeoutMs?: number; intervalMs?: number } & CheckPaymentOptions = {},
   ): Promise<Operation[]> {
-    const { timeoutMs = 300_000, intervalMs = 5_000 } = opts;
+    const { timeoutMs = 300_000, intervalMs = 5_000, ...checkOpts } = opts;
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
-      const result = await this.checkPaymentByLabel(label);
+      const result = await this.checkPaymentByLabel(label, checkOpts);
       if (result.found) return result.operations;
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
