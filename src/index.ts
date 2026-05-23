@@ -8,6 +8,7 @@ export {
 
 export type {
   AccountInfo,
+  CheckPaymentOptions,
   IncomingNotification,
   NotificationType,
   Operation,

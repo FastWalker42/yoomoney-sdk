@@ -159,6 +159,146 @@ describe("YooMoneyClient", () => {
 
       expect(result.found).toBe(false);
     });
+
+    it("filters out operations with insufficient amount", async () => {
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 50,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = new YooMoneyClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("order-42", { amount: 100 });
+
+      expect(result.found).toBe(false);
+      expect(result.operations).toHaveLength(0);
+    });
+
+    it("accepts operations with amount >= expected", async () => {
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 150,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = new YooMoneyClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("order-42", { amount: 100 });
+
+      expect(result.found).toBe(true);
+      expect(result.operations).toHaveLength(1);
+    });
+
+    it("filters out non-success operations by default", async () => {
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "in_progress",
+            direction: "in",
+            amount: 100,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = new YooMoneyClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("order-42");
+
+      expect(result.found).toBe(false);
+    });
+
+    it("includes non-success operations when requireSuccess=false", async () => {
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "in_progress",
+            direction: "in",
+            amount: 100,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = new YooMoneyClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("order-42", { requireSuccess: false });
+
+      expect(result.found).toBe(true);
+      expect(result.operations).toHaveLength(1);
+    });
+
+    it("validates both amount and status together", async () => {
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "refused",
+            direction: "in",
+            amount: 100,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+          {
+            operation_id: "op2",
+            status: "success",
+            direction: "in",
+            amount: 10,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+          {
+            operation_id: "op3",
+            status: "success",
+            direction: "in",
+            amount: 100,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = new YooMoneyClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("order-42", { amount: 100 });
+
+      expect(result.found).toBe(true);
+      expect(result.operations).toHaveLength(1);
+      expect(result.operations[0].operation_id).toBe("op3");
+    });
   });
 
   describe("getRecentOperations", () => {
