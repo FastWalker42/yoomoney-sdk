@@ -165,8 +165,8 @@ const client = new YooMoneyClient({
 // Последние 10 операций
 const operations = await client.getRecentOperations(10);
 
-// Проверить платёж по лейблу
-const result = await client.checkPaymentByLabel("order-42");
+// Проверить платёж по лейблу (с проверкой суммы и статуса)
+const result = await client.checkPaymentByLabel("order-42", { amount: 500 });
 if (result.found) {
   console.log("Платёж найден!", result.operations);
 }
@@ -185,10 +185,11 @@ for await (const op of client.getOperationHistoryAll({ type: "deposition" })) {
   console.log(op.title, op.amount);
 }
 
-// Ожидание платежа (поллинг, таймаут 5 минут)
+// Ожидание платежа (поллинг, таймаут 5 минут, проверка суммы)
 const ops = await client.waitForPayment("order-42", {
   timeoutMs: 300_000,
   intervalMs: 5_000,
+  amount: 500,
 });
 ```
 
@@ -252,10 +253,12 @@ const link = generatePaymentLink({
 console.log("Отправьте пользователю:", link);
 
 // Ждём оплату (поллинг каждые 5 секунд, таймаут 5 минут)
+// amount: 100 — SDK автоматически проверит что сумма >= 100
 try {
   const ops = await client.waitForPayment(label, {
     timeoutMs: 300_000,
     intervalMs: 5_000,
+    amount: 100,
   });
   console.log("Оплата получена!", ops[0].amount);
 } catch {
@@ -310,7 +313,7 @@ Label привязывается к операции автоматически 
 ```
 
 Получить label можно двумя способами:
-- **`checkPaymentByLabel(label)`** — запрос к `operation-history` с фильтром `label`. Возвращает все входящие операции с данным label.
+- **`checkPaymentByLabel(label, opts?)`** — запрос к `operation-history` с фильтром `label`. По умолчанию возвращает только успешные операции (`status === "success"`). С опцией `amount` — только те, где сумма >= указанной.
 - **`getOperationDetails({ operation_id })`** — в ответе будет поле `label`, если оно было задано при оплате.
 
 Отправитель не видит label и не может его изменить — он зашит в ссылку/форму оплаты.
@@ -326,6 +329,16 @@ YooMoney не поддерживает произвольное «memo» от о
 3. **Amount** — если каждому пользователю выставлять уникальную сумму (например, +0.01 * userId), можно идентифицировать по сумме. Ненадёжный метод, только как запасной.
 
 **Рекомендуемый паттерн:** каждому пользователю генерируете уникальную ссылку со своим `label`. Проверяете по `label` через `waitForPayment()` или `checkPaymentByLabel()` — это 100% надёжно и не требует вебхуков или сервера.
+
+> **⚠️ Безопасность:** Всегда указывайте ожидаемую сумму при проверке платежа! Пользователь может изменить `sum` в URL оплаты и отправить меньше. SDK автоматически отсеет операции с суммой < ожидаемой.
+>
+> ```typescript
+> // Небезопасно — примет любую сумму:
+> await client.checkPaymentByLabel("order-42");
+>
+> // Безопасно — проверит что amount >= 1000:
+> await client.checkPaymentByLabel("order-42", { amount: 1000 });
+> ```
 
 ---
 
@@ -381,9 +394,16 @@ bun test
 | `getOperationHistory(params?)` | Страница истории операций |
 | `getOperationHistoryAll(params?)` | AsyncGenerator по всей истории |
 | `getOperationDetails({ operation_id })` | Детали операции |
-| `checkPaymentByLabel(label)` | Проверка входящего платежа по лейблу |
+| `checkPaymentByLabel(label, opts?)` | Проверка входящего платежа по лейблу с валидацией суммы и статуса |
 | `getRecentOperations(count?)` | Последние N операций |
-| `waitForPayment(label, opts?)` | Поллинг до появления платежа с лейблом |
+| `waitForPayment(label, opts?)` | Поллинг до появления платежа с лейблом (поддерживает `amount` и `requireSuccess`) |
+
+### `CheckPaymentOptions`
+
+| Параметр | Тип | По умолчанию | Описание |
+|---|---|---|---|
+| `amount` | `number` | — | Ожидаемая сумма. Отсеивает операции с `amount < expected` |
+| `requireSuccess` | `boolean` | `true` | Отсеивает операции с `status !== "success"` |
 
 ### Утилиты
 
