@@ -1,6 +1,6 @@
 {
   "name": "@fw42/yoomoney",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Runtime-agnostic TypeScript SDK for YooMoney Wallet API — payments, history, notifications, payment links",
   "type": "module",
   "exports": {
