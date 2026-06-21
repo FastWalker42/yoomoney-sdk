@@ -9,8 +9,17 @@ function mockFetch(response: object, status = 200) {
     ok: status >= 200 && status < 300,
     status,
     statusText: status === 200 ? "OK" : "Unauthorized",
+    headers: new Headers({
+      "content-type": "application/json; charset=utf-8",
+    }),
+    text: () => Promise.resolve(JSON.stringify(response)),
     json: () => Promise.resolve(response),
   });
+}
+
+/** Create a client with retries disabled to keep tests fast. */
+function makeClient(opts: ConstructorParameters<typeof YooMoneyClient>[0]) {
+  return new YooMoneyClient({ maxRetries: 0, ...opts });
 }
 
 describe("YooMoneyClient", () => {
@@ -37,7 +46,7 @@ describe("YooMoneyClient", () => {
       const fakeFetch = mockFetch(body);
       globalThis.fetch = fakeFetch;
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const info = await client.getAccountInfo();
 
       expect(fakeFetch).toHaveBeenCalledOnce();
@@ -67,7 +76,7 @@ describe("YooMoneyClient", () => {
       };
       globalThis.fetch = mockFetch(body);
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const result = await client.getOperationHistory({ records: 5 });
 
       expect(result.operations).toHaveLength(1);
@@ -78,7 +87,7 @@ describe("YooMoneyClient", () => {
       const fakeFetch = mockFetch({ operations: [] });
       globalThis.fetch = fakeFetch;
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       await client.getOperationHistory({ type: ["deposition", "payment"] });
 
       const sentBody = (fakeFetch.mock.calls[0] as [string, RequestInit])[1].body as string;
@@ -88,7 +97,7 @@ describe("YooMoneyClient", () => {
     it("throws YooMoneyError on API error", async () => {
       globalThis.fetch = mockFetch({ error: "illegal_param_type" });
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       await expect(
         client.getOperationHistory({ type: "deposition" }),
       ).rejects.toThrow(YooMoneyError);
@@ -109,7 +118,7 @@ describe("YooMoneyClient", () => {
       };
       globalThis.fetch = mockFetch(body);
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const result = await client.getOperationDetails({ operation_id: "op1" });
 
       expect(result.operation_id).toBe("op1");
@@ -119,7 +128,7 @@ describe("YooMoneyClient", () => {
     it("throws on API error", async () => {
       globalThis.fetch = mockFetch({ error: "illegal_param_operation_id" });
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       await expect(
         client.getOperationDetails({ operation_id: "bad" }),
       ).rejects.toThrow(YooMoneyError);
@@ -144,7 +153,7 @@ describe("YooMoneyClient", () => {
       };
       globalThis.fetch = mockFetch(body);
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const result = await client.checkPaymentByLabel("order-42");
 
       expect(result.found).toBe(true);
@@ -154,7 +163,7 @@ describe("YooMoneyClient", () => {
     it("returns found=false when no matching ops", async () => {
       globalThis.fetch = mockFetch({ operations: [] });
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const result = await client.checkPaymentByLabel("nonexistent");
 
       expect(result.found).toBe(false);
@@ -177,7 +186,7 @@ describe("YooMoneyClient", () => {
       };
       globalThis.fetch = mockFetch(body);
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const result = await client.checkPaymentByLabel("order-42", { amount: 100 });
 
       expect(result.found).toBe(false);
@@ -201,7 +210,7 @@ describe("YooMoneyClient", () => {
       };
       globalThis.fetch = mockFetch(body);
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const result = await client.checkPaymentByLabel("order-42", { amount: 100 });
 
       expect(result.found).toBe(true);
@@ -225,7 +234,7 @@ describe("YooMoneyClient", () => {
       };
       globalThis.fetch = mockFetch(body);
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const result = await client.checkPaymentByLabel("order-42");
 
       expect(result.found).toBe(false);
@@ -248,7 +257,7 @@ describe("YooMoneyClient", () => {
       };
       globalThis.fetch = mockFetch(body);
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const result = await client.checkPaymentByLabel("order-42", { requireSuccess: false });
 
       expect(result.found).toBe(true);
@@ -292,7 +301,7 @@ describe("YooMoneyClient", () => {
       };
       globalThis.fetch = mockFetch(body);
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const result = await client.checkPaymentByLabel("order-42", { amount: 100 });
 
       expect(result.found).toBe(true);
@@ -317,7 +326,7 @@ describe("YooMoneyClient", () => {
         ],
       });
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const ops = await client.getRecentOperations(5);
 
       expect(ops).toHaveLength(1);
@@ -347,11 +356,15 @@ describe("YooMoneyClient", () => {
           ok: true,
           status: 200,
           statusText: "OK",
+          headers: new Headers({
+            "content-type": "application/json; charset=utf-8",
+          }),
+          text: () => Promise.resolve(JSON.stringify(data)),
           json: () => Promise.resolve(data),
         });
       });
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       const ops: string[] = [];
       for await (const op of client.getOperationHistoryAll()) {
         ops.push(op.operation_id);
@@ -365,7 +378,7 @@ describe("YooMoneyClient", () => {
     it("throws YooMoneyHttpError on non-OK response", async () => {
       globalThis.fetch = mockFetch({}, 401);
 
-      const client = new YooMoneyClient({ token: TOKEN });
+      const client = makeClient({ token: TOKEN });
       await expect(client.getAccountInfo()).rejects.toThrow(YooMoneyHttpError);
     });
   });
@@ -375,7 +388,7 @@ describe("YooMoneyClient", () => {
       const fakeFetch = mockFetch({ operations: [] });
       globalThis.fetch = fakeFetch;
 
-      const client = new YooMoneyClient({
+      const client = makeClient({
         token: TOKEN,
         baseUrl: "https://custom.example.com/",
       });
@@ -383,6 +396,109 @@ describe("YooMoneyClient", () => {
 
       const url = (fakeFetch.mock.calls[0] as [string, RequestInit])[0];
       expect(url).toBe("https://custom.example.com/api/operation-history");
+    });
+  });
+
+  describe("input validation", () => {
+    it("throws on empty token in constructor", () => {
+      expect(() => new YooMoneyClient({ token: "" })).toThrow(YooMoneyError);
+    });
+
+    it("throws on empty label in checkPaymentByLabel", async () => {
+      globalThis.fetch = mockFetch({ operations: [] });
+      const client = makeClient({ token: TOKEN });
+      await expect(client.checkPaymentByLabel("")).rejects.toThrow(YooMoneyError);
+    });
+
+    it("throws on too-long label in checkPaymentByLabel", async () => {
+      globalThis.fetch = mockFetch({ operations: [] });
+      const client = makeClient({ token: TOKEN });
+      await expect(
+        client.checkPaymentByLabel("x".repeat(65)),
+      ).rejects.toThrow(YooMoneyError);
+    });
+
+    it("throws on missing operation_id in getOperationDetails", async () => {
+      const client = makeClient({ token: TOKEN });
+      await expect(
+        // @ts-expect-error testing runtime guard
+        client.getOperationDetails({}),
+      ).rejects.toThrow(YooMoneyError);
+    });
+
+    it("rejects intervalMs < 1000 in waitForPayment", async () => {
+      const client = makeClient({ token: TOKEN });
+      await expect(
+        client.waitForPayment("order-1", { intervalMs: 100, timeoutMs: 1000 }),
+      ).rejects.toThrow(YooMoneyError);
+    });
+  });
+
+  describe("non-JSON response handling", () => {
+    it("throws YooMoneyError on HTML response", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({ "content-type": "text/html; charset=utf-8" }),
+        text: () => Promise.resolve("<html><body>502 Bad Gateway</body></html>"),
+        json: () => Promise.reject(new SyntaxError("Unexpected token <")),
+      });
+
+      const client = new YooMoneyClient({ token: TOKEN, maxRetries: 0 });
+      await expect(client.getAccountInfo()).rejects.toThrow(YooMoneyError);
+    });
+  });
+
+  describe("waitForPayment", () => {
+    it("returns immediately when payment is already present", async () => {
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 100,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = makeClient({ token: TOKEN });
+      const ops = await client.waitForPayment("order-42", { timeoutMs: 1000 });
+      expect(ops).toHaveLength(1);
+    });
+
+    it("throws timeout error when payment never arrives", async () => {
+      globalThis.fetch = mockFetch({ operations: [] });
+
+      const client = makeClient({ token: TOKEN });
+      await expect(
+        client.waitForPayment("order-42", {
+          timeoutMs: 10,
+          intervalMs: 1000,
+        }),
+      ).rejects.toThrow(YooMoneyError);
+    });
+
+    it("performs at least one check even with timeoutMs=0", async () => {
+      const fakeFetch = mockFetch({ operations: [] });
+      globalThis.fetch = fakeFetch;
+
+      const client = makeClient({ token: TOKEN });
+      await expect(
+        client.waitForPayment("order-42", {
+          timeoutMs: 0,
+          intervalMs: 1000,
+        }),
+      ).rejects.toThrow(YooMoneyError);
+
+      // At least one fetch was made.
+      expect(fakeFetch).toHaveBeenCalled();
     });
   });
 });

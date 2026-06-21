@@ -61,57 +61,6 @@ curl -X POST https://yoomoney.ru/oauth/token \
 
 Токен **бессрочный** — действует пока не отзовёте доступ или не запросите авторизацию повторно.
 
----
-
-## Получение токена
-
-Для работы с API нужен OAuth-токен YooMoney. Вот как его получить:
-
-### Шаг 1. Регистрация приложения
-
-Перейдите на страницу регистрации: https://yoomoney.ru/myservices/new
-
-Заполните форму:
-
-| Поле | Что указать |
-|---|---|
-| **Название** | Любое, например `My App` |
-| **Redirect URI** | **Рабочий домен**, который вы контролируете (например `https://example.com`). Не используйте `localhost` или несуществующие домены — редирект не сработает и вы не получите code. |
-| **Почта для связи** | Ваш email |
-
-> **Важно:** Redirect URI должен быть реальным доменом, на который браузер сможет перейти. После авторизации YooMoney перенаправит вас на этот адрес с параметром `code` в URL — вам нужно будет скопировать его из адресной строки.
-
-Нажмите **Подтвердить**. Вы получите `client_id` и `client_secret` — сохраните их.
-
-### Шаг 2. Авторизация (получение code)
-
-Откройте в браузере ссылку, подставив ваш `client_id` и `redirect_uri`:
-
-```
-https://yoomoney.ru/oauth/authorize?client_id=ВАШ_CLIENT_ID&response_type=code&redirect_uri=https://ваш-домен.com&scope=account-info%20operation-history%20operation-details
-```
-
-- Залогиньтесь в YooMoney и разрешите доступ приложению.
-- Браузер перенаправит вас на `https://ваш-домен.com?code=XXXXXXXXX`.
-- Скопируйте значение `code` из адресной строки.
-
-### Шаг 3. Обмен code на токен
-
-Выполните в терминале (подставьте свои значения):
-
-```bash
-curl -X POST https://yoomoney.ru/oauth/token \
-  -d "code=ВАШ_CODE&client_id=ВАШ_CLIENT_ID&grant_type=authorization_code&redirect_uri=https://ваш-домен.com&client_secret=ВАШ_CLIENT_SECRET"
-```
-
-В ответе получите `access_token` — это и есть ваш токен:
-
-```json
-{"access_token":"4100XXXX.XXXXXXXX..."}
-```
-
-Сохраните его. Токен **бессрочный** — он не истекает, пока вы не отзовёте доступ или не запросите авторизацию повторно.
-
 ### Шаг 4. Проверка
 
 ```bash
@@ -280,12 +229,12 @@ import {
 } from "@fw42/yoomoney";
 
 // В вашем HTTP-сервере (Express, Hono, Bun.serve и т.д.)
+// requestBody — СЫРАЯ строка тела POST (не парсенная).
 async function handleWebhook(requestBody: string) {
-  const notification = parseNotification(requestBody);
-
-  // Проверяем подпись (HMAC-SHA256)
+  // Рекомендуется проверять подпись по СЫРОМУ телу — это гарантирует,
+  // что подпись вычислена ровно для того набора полей, что прислал YooMoney.
   const isValid = await verifyNotificationSignature(
-    notification,
+    requestBody,
     "ваш_секрет_из_настроек_уведомлений",
   );
 
@@ -293,7 +242,8 @@ async function handleWebhook(requestBody: string) {
     return { status: 403, body: "Invalid signature" };
   }
 
-  // Идентифицируем платёж по label
+  // После проверки подписи — парсим и используем.
+  const notification = parseNotification(requestBody);
   console.log(`Получен платёж: ${notification.amount} руб.`);
   console.log(`Label: ${notification.label}`);
   console.log(`От: ${notification.sender}`);
@@ -380,11 +330,13 @@ bun test
 
 ### `new YooMoneyClient(options)`
 
-| Параметр | Тип | Описание |
-|---|---|---|
-| `token` | `string` | OAuth-токен |
-| `baseUrl` | `string` | Базовый URL (по умолчанию `https://yoomoney.ru`) |
-| `timeout` | `number` | Таймаут запроса в мс (по умолчанию `10000`) |
+| Параметр | Тип | По умолчанию | Описание |
+|---|---|---|---|
+| `token` | `string` | — | OAuth-токен (обязательный) |
+| `baseUrl` | `string` | `https://yoomoney.ru` | Базовый URL |
+| `timeout` | `number` | `10000` | Таймаут запроса в мс |
+| `maxRetries` | `number` | `3` | Количество ретраев на 429 / 5xx / сетевые ошибки |
+| `retryBaseDelay` | `number` | `500` | Базовая задержка для экспоненциального backoff в мс |
 
 ### Методы клиента
 
@@ -405,6 +357,13 @@ bun test
 | `amount` | `number` | — | Ожидаемая сумма. Отсеивает операции с `amount < expected` |
 | `requireSuccess` | `boolean` | `true` | Отсеивает операции с `status !== "success"` |
 
+### `WaitForPaymentOptions` (extends `CheckPaymentOptions`)
+
+| Параметр | Тип | По умолчанию | Описание |
+|---|---|---|---|
+| `timeoutMs` | `number` | `300000` | Общий таймаут поллинга в мс |
+| `intervalMs` | `number` | `5000` | Интервал между запросами в мс (минимум `1000`) |
+
 ### Утилиты
 
 | Функция | Описание |
@@ -412,7 +371,9 @@ bun test
 | `generatePaymentLink(params)` | URL для оплаты через quickpay |
 | `generatePaymentForm(params, buttonText?)` | HTML-форма для встраивания |
 | `parseNotification(body)` | Парсинг тела вебхука |
-| `verifyNotificationSignature(notification, secret)` | Проверка HMAC-SHA256 подписи |
+| `verifyNotificationSignature(input, secret)` | Проверка HMAC-SHA256 подписи. `input` может быть сырой URL-encoded строкой, `URLSearchParams` или распарсенным `IncomingNotification`. **Рекомендуется передавать сырую строку** — это гарантирует, что подпись будет вычислена для того же набора полей, что прислал YooMoney. |
+
+> **Подпись уведомлений:** SDK реализует алгоритм HMAC-SHA256 согласно официальной документации YooMoney: удаляет поле `sign`, сортирует оставшиеся параметры по алфавиту, применяет URL-кодирование (RFC 3986), объединяет в `key=value&key=value...` (пустые значения как `key=`), вычисляет HMAC-SHA256 и сравнивает с `sign` (hex, lowercase) с использованием constant-time сравнения.
 
 ## Лицензия
 

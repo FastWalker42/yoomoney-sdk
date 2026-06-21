@@ -168,5 +168,18 @@ export interface IncomingNotification {
 export interface YooMoneyClientOptions {
   token: string;
   baseUrl?: string;
+  /** Request timeout in ms (default: 10000). */
   timeout?: number;
+  /** Max number of retries on 429 / 5xx / network errors (default: 3). */
+  maxRetries?: number;
+  /** Base delay for exponential backoff in ms (default: 500). */
+  retryBaseDelay?: number;
+}
+
+/** Options for `YooMoneyClient.waitForPayment`. */
+export interface WaitForPaymentOptions extends CheckPaymentOptions {
+  /** Total time to poll before giving up, in ms (default: 300000 = 5 min). */
+  timeoutMs?: number;
+  /** Interval between polls in ms (default: 5000, minimum: 1000). */
+  intervalMs?: number;
 }

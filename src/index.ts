@@ -5,6 +5,7 @@ export {
   verifyNotificationSignature,
   parseNotification,
 } from "./notifications.js";
+export type { NotificationInput } from "./notifications.js";
 
 export type {
   AccountInfo,
@@ -23,5 +24,6 @@ export type {
   PaymentLinkParams,
   PaymentType,
   RecipientType,
+  WaitForPaymentOptions,
   YooMoneyClientOptions,
 } from "./types.js";

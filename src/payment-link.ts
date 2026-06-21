@@ -1,6 +1,8 @@
 import type { PaymentLinkParams } from "./types.js";
+import { YooMoneyError } from "./errors.js";
 
 const QUICKPAY_URL = "https://yoomoney.ru/quickpay/confirm";
+const MAX_LABEL_LENGTH = 64;
 
 /**
  * Generate a YooMoney quickpay payment URL.
@@ -9,6 +11,8 @@ const QUICKPAY_URL = "https://yoomoney.ru/quickpay/confirm";
  * Use `label` to later identify the payment in operation history.
  */
 export function generatePaymentLink(params: PaymentLinkParams): string {
+  validatePaymentLinkParams(params);
+
   const qs = new URLSearchParams();
   qs.set("receiver", params.receiver);
   qs.set("quickpay-form", "button");
@@ -31,8 +35,10 @@ export function generatePaymentForm(
   params: PaymentLinkParams,
   buttonText = "Оплатить",
 ): string {
+  validatePaymentLinkParams(params);
+
   const hidden = (name: string, value: string) =>
-    `  <input type="hidden" name="${name}" value="${escapeHtml(value)}" />`;
+    `  <input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}" />`;
 
   const lines: string[] = [
     `<form method="POST" action="${QUICKPAY_URL}">`,
@@ -59,10 +65,48 @@ export function generatePaymentForm(
   return lines.join("\n");
 }
 
+// ---------------------------------------------------------------------------
+
+function validatePaymentLinkParams(params: PaymentLinkParams): void {
+  if (!params || typeof params !== "object") {
+    throw new YooMoneyError("Payment params are required", "invalid_params");
+  }
+  if (!params.receiver || params.receiver.trim() === "") {
+    throw new YooMoneyError("`receiver` is required", "invalid_receiver");
+  }
+  if (typeof params.sum !== "number" || !isFinite(params.sum) || params.sum <= 0) {
+    throw new YooMoneyError(
+      "`sum` must be a positive finite number",
+      "invalid_sum",
+    );
+  }
+  if (params.label !== undefined) {
+    if (typeof params.label !== "string" || params.label.length === 0) {
+      throw new YooMoneyError(
+        "`label` must be a non-empty string when provided",
+        "invalid_label",
+      );
+    }
+    if (params.label.length > MAX_LABEL_LENGTH) {
+      throw new YooMoneyError(
+        `\`label\` must be at most ${MAX_LABEL_LENGTH} characters (got ${params.label.length})`,
+        "invalid_label",
+      );
+    }
+  }
+}
+
+/**
+ * Escape a string for safe inclusion in HTML text content and
+ * double-quoted attribute values.
+ *
+ * Escapes: & < > " '
+ */
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
