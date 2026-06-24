@@ -354,8 +354,23 @@ bun test
 
 | Параметр | Тип | По умолчанию | Описание |
 |---|---|---|---|
-| `amount` | `number` | — | Ожидаемая сумма. Отсеивает операции с `amount < expected` |
+| `amount` | `number` | — | Ожидаемая сумма. Если не указана — open-ended режим: принимается любой платёж с подходящим label. |
 | `requireSuccess` | `boolean` | `true` | Отсеивает операции с `status !== "success"` |
+| `feePayer` | `"sender" \| "receiver"` | `"sender"` | Кто платит комиссию YooMoney. При `"sender"` сравнение идёт с `op.amount`, при `"receiver"` — с `op.withdraw_amount`. |
+| `ignoreFee` | `boolean` | `false` | Если `true`, сравнивает с `op.withdraw_amount` (сумма списания) — полезно когда не важно, кто платит комиссию, главное — что отправитель заплатил нужную сумму. |
+
+**Семантика проверки суммы:**
+
+| `amount` задан? | `ignoreFee` | `feePayer` | Сравнивается с |
+|---|---|---|---|
+| нет (open-ended) | — | — | ничего не проверяется, принимается любой входящий платёж с этим label |
+| да | `false` | `"sender"` | `op.amount` (что получил получатель) |
+| да | `false` | `"receiver"` | `op.withdraw_amount` (что списалось с отправителя) |
+| да | `true` | игнорируется | `op.withdraw_amount` (что списалось с отправителя) |
+
+> **Важно про `withdraw_amount`:** это поле присутствует только в ответе `operation-details` и в notifications. В обычной истории операций (`operation-history` без `details: true`) его может не быть. Если SDK не находит `withdraw_amount` при выбранной стратегии проверки, операция отсеивается (fail-safe).
+>
+> Чтобы получить `withdraw_amount` через `checkPaymentByLabel`, используйте `getOperationDetails({ operation_id })` для найденных операций или вызывайте `getOperationHistory({ details: true })`.
 
 ### `WaitForPaymentOptions` (extends `CheckPaymentOptions`)
 
@@ -363,6 +378,83 @@ bun test
 |---|---|---|---|
 | `timeoutMs` | `number` | `300000` | Общий таймаут поллинга в мс |
 | `intervalMs` | `number` | `5000` | Интервал между запросами в мс (минимум `1000`) |
+| `amount`, `requireSuccess`, `feePayer`, `ignoreFee` | — | — | Любые поля из `CheckPaymentOptions` |
+
+### `PaymentLinkParams`
+
+| Параметр | Тип | По умолчанию | Описание |
+|---|---|---|---|
+| `receiver` | `string` | — | Номер кошелька получателя (обязательный) |
+| `sum` | `number` | — | Сумма списания с отправителя. **Опциональная** — если опустить, будет создана open-ended ссылка (отправитель вводит любую сумму, полезно для пополнения баланса). |
+| `paymentType` | `"PC" \| "AC"` | — | Метод оплаты: `PC` = кошелёк YooMoney, `AC` = банковская карта |
+| `label` | `string` | — | Уникальный идентификатор платежа (до 64 символов) |
+| `successURL` | `string` | — | URL для редиректа после успешной оплаты |
+
+## Примеры использования
+
+### Фиксированная сумма с учётом комиссии
+
+```typescript
+// Юзер платит 500 ₽ с карты. YooMoney берёт комиссию с отправителя,
+// получатель получает ровно 500 ₽.
+const link = generatePaymentLink({
+  receiver: "4100118425529732",
+  sum: 500,
+  label: "order-42",
+  paymentType: "AC",
+});
+
+// Проверяем, что получатель получил >= 500 ₽
+const result = await client.checkPaymentByLabel("order-42", {
+  amount: 500,
+  feePayer: "sender", // default
+});
+```
+
+### Игнорировать комиссию (проверяем, что юзер заплатил нужную сумму)
+
+```typescript
+// Юзер платит 500 ₽ картой. YooMoney берёт ~3% комиссии с отправителя,
+// получатель получает ~485 ₽. Нам важно, что юзер ПОПЫТАЛСЯ заплатить 500.
+const result = await client.checkPaymentByLabel("order-42", {
+  amount: 500,
+  ignoreFee: true, // сравниваем с withdraw_amount
+});
+```
+
+### Свободное пополнение баланса (open-ended)
+
+```typescript
+// Создаём ссылку без sum — юзер введёт любую сумму
+const link = generatePaymentLink({
+  receiver: "4100118425529732",
+  label: "topup-user-42",
+});
+
+// Проверяем, что пришёл любой платёж с этим label (сумма не важна)
+const result = await client.checkPaymentByLabel("topup-user-42");
+if (result.found) {
+  // result.operations[0].amount — сколько фактически зачислено
+  const credited = result.operations[0].amount;
+  console.log(`Зачислено: ${credited} ₽`);
+}
+```
+
+### Ожидание платежа с проверкой суммы списания
+
+```typescript
+// Ждём, пока юзер не заплатит >= 1000 ₽ (с учётом комиссии).
+// Важно: сравнение идёт с withdraw_amount, который доступен только
+// через operation-details. SDK автоматически сделает дополнительный запрос,
+// если поле отсутствует в истории.
+const ops = await client.waitForPayment("order-99", {
+  amount: 1000,
+  ignoreFee: true,
+  timeoutMs: 600_000,
+  intervalMs: 5_000,
+});
+console.log(`Платёж получен: ${ops[0].amount} ₽ зачислено`);
+```
 
 ### Утилиты
 

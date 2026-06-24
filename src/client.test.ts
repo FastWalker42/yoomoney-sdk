@@ -308,6 +308,182 @@ describe("YooMoneyClient", () => {
       expect(result.operations).toHaveLength(1);
       expect(result.operations[0].operation_id).toBe("op3");
     });
+
+    // -------------------------------------------------------------------------
+    // Fee-aware amount checks (v2.3.0)
+    // -------------------------------------------------------------------------
+
+    it("default feePayer=sender: compares against op.amount", async () => {
+      // User sent 5 from card, YooMoney took 0.15 fee, receiver got 4.85.
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 4.85,
+            withdraw_amount: 5,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Card deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = makeClient({ token: TOKEN });
+      // Expecting 5 — op.amount=4.85 < 5 → rejected (default feePayer=sender).
+      const result = await client.checkPaymentByLabel("order-42", { amount: 5 });
+      expect(result.found).toBe(false);
+    });
+
+    it("ignoreFee=true: compares against withdraw_amount", async () => {
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 4.85,
+            withdraw_amount: 5,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Card deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = makeClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("order-42", {
+        amount: 5,
+        ignoreFee: true,
+      });
+      expect(result.found).toBe(true);
+    });
+
+    it("feePayer=receiver: compares against withdraw_amount", async () => {
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 4.85,
+            withdraw_amount: 5,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Card deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = makeClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("order-42", {
+        amount: 5,
+        feePayer: "receiver",
+      });
+      expect(result.found).toBe(true);
+    });
+
+    it("feePayer=sender + ignoreFee=false: rejects when withdraw_amount > amount", async () => {
+      // Edge case: sender paid MORE than expected. withdraw_amount=10, amount=9.
+      // feePayer=sender → op.amount=9 → 9 >= 5 → accepted.
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 9,
+            withdraw_amount: 10,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Overpay",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = makeClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("order-42", { amount: 5 });
+      expect(result.found).toBe(true);
+    });
+
+    it("open-ended: amount undefined, accepts any positive incoming transfer", async () => {
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 0.01,
+            withdraw_amount: 0.01,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Top-up",
+            type: "deposition",
+            label: "topup-xyz",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = makeClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("topup-xyz");
+      expect(result.found).toBe(true);
+      expect(result.operations).toHaveLength(1);
+    });
+
+    it("open-ended: still filters by status when requireSuccess=true (default)", async () => {
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "in_progress",
+            direction: "in",
+            amount: 100,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Pending",
+            type: "deposition",
+            label: "topup-xyz",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = makeClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("topup-xyz");
+      expect(result.found).toBe(false);
+    });
+
+    it("validates feePayer value", async () => {
+      const client = makeClient({ token: TOKEN });
+      await expect(
+        // @ts-expect-error testing runtime guard
+        client.checkPaymentByLabel("order-42", { feePayer: "split" }),
+      ).rejects.toThrow(YooMoneyError);
+    });
+
+    it("validates amount is positive finite", async () => {
+      const client = makeClient({ token: TOKEN });
+      await expect(
+        client.checkPaymentByLabel("order-42", { amount: 0 }),
+      ).rejects.toThrow(YooMoneyError);
+      await expect(
+        client.checkPaymentByLabel("order-42", { amount: -10 }),
+      ).rejects.toThrow(YooMoneyError);
+      await expect(
+        client.checkPaymentByLabel("order-42", { amount: NaN }),
+      ).rejects.toThrow(YooMoneyError);
+      await expect(
+        client.checkPaymentByLabel("order-42", { amount: Infinity }),
+      ).rejects.toThrow(YooMoneyError);
+    });
   });
 
   describe("getRecentOperations", () => {

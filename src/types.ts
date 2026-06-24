@@ -80,6 +80,8 @@ export interface Operation {
   codepro?: boolean;
   fee?: number;
   amount_due?: number;
+  /** Total amount debited from the sender (includes YooMoney fee when fee is on sender). Only present for incoming transfers and operation-details responses. */
+  withdraw_amount?: number;
   digital_goods?: Record<string, unknown>;
 }
 
@@ -105,11 +107,51 @@ export type OperationDetailsResponse = Operation & {
 // Check payment options
 // ---------------------------------------------------------------------------
 
+/**
+ * Who pays the YooMoney processing fee.
+ *
+ * - `"sender"` (default) — the sender is charged the fee on top of `sum`.
+ *   The receiver gets exactly `sum` (i.e. `op.amount === sum`).
+ *   Use this when you generate a quickpay link with the default settings.
+ *
+ * - `"receiver"` — the fee is deducted from `sum`.
+ *   The sender pays exactly `sum`, the receiver gets `sum - fee`
+ *   (i.e. `op.withdraw_amount === sum`, `op.amount < sum`).
+ *   Use this when you explicitly opted into receiver-pays-fee mode in
+ *   YooMoney dashboard.
+ *
+ * When `ignoreFee: true` is set, this value is ignored.
+ */
+export type FeePayer = "sender" | "receiver";
+
 export interface CheckPaymentOptions {
-  /** Expected payment amount. When set, only operations with amount >= this value are considered valid. */
+  /**
+   * Expected payment amount (RUB). When set, only operations whose
+   * relevant amount field is `>=` this value are considered valid.
+   *
+   * - With `ignoreFee: false` (default) and `feePayer: "sender"` (default):
+   *   compares against `op.amount` (what the receiver actually got).
+   * - With `ignoreFee: false` and `feePayer: "receiver"`: compares against
+   *   `op.withdraw_amount` (what the sender was charged).
+   * - With `ignoreFee: true`: always compares against `op.withdraw_amount`,
+   *   so partial payments are rejected even if YooMoney fee ate part of `sum`.
+   *
+   * Leave `undefined` for open-ended payments (e.g. balance top-ups) —
+   * any positive incoming transfer with matching label is accepted.
+   */
   amount?: number;
-  /** Whether to require status === "success". Default: true. */
+  /** Whether to require `status === "success"`. Default: `true`. */
   requireSuccess?: boolean;
+  /** Who pays the YooMoney fee. Default: `"sender"`. Ignored when `ignoreFee: true`. */
+  feePayer?: FeePayer;
+  /**
+   * Skip fee-aware comparison entirely. When `true`, the SDK compares
+   * `amount` against `op.withdraw_amount` (total debited from sender).
+   * Useful when you don't care about YooMoney's cut and just want to
+   * verify the user paid at least the requested sum.
+   * Default: `false`.
+   */
+  ignoreFee?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,8 +161,14 @@ export interface CheckPaymentOptions {
 export interface PaymentLinkParams {
   /** Receiver wallet number. */
   receiver: string;
-  /** Amount to charge from sender. */
-  sum: number;
+  /**
+   * Amount to charge from sender (RUB).
+   *
+   * Omit for open-ended payments (free-amount top-ups). YooMoney will
+   * show a form where the sender enters any positive amount. The
+   * resulting operation's `label` still lets you identify it later.
+   */
+  sum?: number;
   /** Payment method: PC = wallet, AC = bank card. */
   paymentType?: PaymentType;
   /** Label for identifying this payment (up to 64 chars). */

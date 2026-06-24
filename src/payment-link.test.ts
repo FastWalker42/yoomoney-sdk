@@ -144,3 +144,48 @@ describe("input validation", () => {
     ).not.toThrow();
   });
 });
+
+describe("open-ended payments (sum omitted)", () => {
+  it("generatePaymentLink omits sum param when not provided", () => {
+    const url = generatePaymentLink({
+      receiver: "410012345",
+      label: "topup-1",
+    });
+    expect(url).toContain("receiver=410012345");
+    expect(url).toContain("label=topup-1");
+    expect(url).not.toContain("sum=");
+  });
+
+  it("generatePaymentLink with sum still includes it", () => {
+    const url = generatePaymentLink({
+      receiver: "410012345",
+      sum: 100,
+    });
+    expect(url).toContain("sum=100");
+  });
+
+  it("generatePaymentForm omits sum hidden field when not provided", () => {
+    const html = generatePaymentForm({
+      receiver: "410012345",
+      label: "topup-1",
+    });
+    expect(html).not.toContain('name="sum"');
+    expect(html).toContain('name="receiver"');
+    expect(html).toContain('name="label"');
+  });
+
+  it("generatePaymentForm with sum still includes hidden field", () => {
+    const html = generatePaymentForm({
+      receiver: "410012345",
+      sum: 100,
+    });
+    expect(html).toContain('name="sum"');
+    expect(html).toContain('value="100"');
+  });
+
+  it("open-ended: receiver-only link generates without error", () => {
+    expect(() =>
+      generatePaymentLink({ receiver: "410012345" }),
+    ).not.toThrow();
+  });
+});

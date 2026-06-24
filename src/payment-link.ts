@@ -16,7 +16,8 @@ export function generatePaymentLink(params: PaymentLinkParams): string {
   const qs = new URLSearchParams();
   qs.set("receiver", params.receiver);
   qs.set("quickpay-form", "button");
-  qs.set("sum", String(params.sum));
+  // `sum` is optional — omit it for open-ended (free-amount) payments.
+  if (params.sum !== undefined) qs.set("sum", String(params.sum));
 
   if (params.paymentType) qs.set("paymentType", params.paymentType);
   if (params.label) qs.set("label", params.label);
@@ -44,8 +45,9 @@ export function generatePaymentForm(
     `<form method="POST" action="${QUICKPAY_URL}">`,
     hidden("receiver", params.receiver),
     hidden("quickpay-form", "button"),
-    hidden("sum", String(params.sum)),
   ];
+  // `sum` is optional — omit it for open-ended (free-amount) payments.
+  if (params.sum !== undefined) lines.push(hidden("sum", String(params.sum)));
 
   if (params.label) lines.push(hidden("label", params.label));
   if (params.successURL) lines.push(hidden("successURL", params.successURL));
@@ -74,11 +76,13 @@ function validatePaymentLinkParams(params: PaymentLinkParams): void {
   if (!params.receiver || params.receiver.trim() === "") {
     throw new YooMoneyError("`receiver` is required", "invalid_receiver");
   }
-  if (typeof params.sum !== "number" || !isFinite(params.sum) || params.sum <= 0) {
-    throw new YooMoneyError(
-      "`sum` must be a positive finite number",
-      "invalid_sum",
-    );
+  if (typeof params.sum !== "undefined") {
+    if (typeof params.sum !== "number" || !isFinite(params.sum) || params.sum <= 0) {
+      throw new YooMoneyError(
+        "`sum` must be a positive finite number when provided (omit it for open-ended payments)",
+        "invalid_sum",
+      );
+    }
   }
   if (params.label !== undefined) {
     if (typeof params.label !== "string" || params.label.length === 0) {

@@ -105,6 +105,7 @@ export class YooMoneyClient {
     opts: CheckPaymentOptions = {},
   ): Promise<{ found: boolean; operations: Operation[] }> {
     validateLabel(label);
+    validateCheckOptions(opts);
 
     const page = await this.getOperationHistory({
       type: "deposition",
@@ -112,9 +113,39 @@ export class YooMoneyClient {
     });
 
     const requireSuccess = opts.requireSuccess !== false;
-    const operations = page.operations.filter((op) => {
+    const needsWithdraw = opts.amount !== undefined &&
+      (opts.ignoreFee === true || opts.feePayer === "receiver");
+
+    // First pass: filter by status; if we need withdraw_amount and it's
+    // missing, fetch operation-details to enrich the operation.
+    const candidates = page.operations.filter((op) => {
       if (requireSuccess && op.status !== "success") return false;
-      if (opts.amount !== undefined && op.amount < opts.amount) return false;
+      return true;
+    });
+
+    const enriched: Operation[] = [];
+    for (const op of candidates) {
+      if (needsWithdraw && op.withdraw_amount === undefined) {
+        try {
+          const details = await this.getOperationDetails({
+            operation_id: op.operation_id,
+          });
+          enriched.push({ ...op, ...details });
+        } catch {
+          // If details fetch fails, keep the original op — amount check
+          // will fail safe (null) below.
+          enriched.push(op);
+        }
+      } else {
+        enriched.push(op);
+      }
+    }
+
+    const operations = enriched.filter((op) => {
+      if (opts.amount !== undefined) {
+        const effective = effectiveAmount(op, opts);
+        if (effective === null || effective < opts.amount) return false;
+      }
       return true;
     });
 
@@ -304,4 +335,42 @@ function validateLabel(label: string): void {
       "invalid_label",
     );
   }
+}
+
+function validateCheckOptions(opts: CheckPaymentOptions): void {
+  if (opts.amount !== undefined) {
+    if (typeof opts.amount !== "number" || !isFinite(opts.amount) || opts.amount <= 0) {
+      throw new YooMoneyError(
+        "`amount` must be a positive finite number",
+        "invalid_amount",
+      );
+    }
+  }
+  if (opts.feePayer !== undefined && opts.feePayer !== "sender" && opts.feePayer !== "receiver") {
+    throw new YooMoneyError(
+      `\`feePayer\` must be "sender" or "receiver" (got "${opts.feePayer}")`,
+      "invalid_fee_payer",
+    );
+  }
+}
+
+/**
+ * Resolve which numeric field of an Operation should be compared against the
+ * expected `amount`, based on `ignoreFee` and `feePayer` options.
+ *
+ * Returns `null` when the required field is absent (e.g. withdraw_amount is
+ * missing on plain history responses without `details: true`).
+ */
+function effectiveAmount(
+  op: Operation,
+  opts: CheckPaymentOptions,
+): number | null {
+  // ignoreFee=true → always use withdraw_amount (what the sender was charged).
+  // feePayer="receiver" → fee comes out of sum, so withdraw_amount === sum.
+  // feePayer="sender" (default) → fee on top of sum, so op.amount === sum.
+  const useWithdraw = opts.ignoreFee === true || opts.feePayer === "receiver";
+  if (useWithdraw) {
+    return op.withdraw_amount ?? null;
+  }
+  return op.amount;
 }

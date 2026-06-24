@@ -10,6 +10,7 @@ export type { NotificationInput } from "./notifications.js";
 export type {
   AccountInfo,
   CheckPaymentOptions,
+  FeePayer,
   IncomingNotification,
   NotificationType,
   Operation,
