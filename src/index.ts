@@ -1,4 +1,4 @@
-export { YooMoneyClient } from "./client.js";
+export { YooMoneyClient, MAX_FEE_RATE } from "./client.js";
 export { YooMoneyError, YooMoneyHttpError } from "./errors.js";
 export { generatePaymentLink, generatePaymentForm } from "./payment-link.js";
 export {

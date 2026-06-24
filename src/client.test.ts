@@ -310,19 +310,25 @@ describe("YooMoneyClient", () => {
     });
 
     // -------------------------------------------------------------------------
-    // Fee-aware amount checks (v2.3.0)
+    // Fee-aware amount checks (v2.4.0)
+    //
+    // Logic:
+    //   feePayer="sender" (default): threshold = amount
+    //     (SDK asked for sum * 1.03, so receiver should get >= amount)
+    //   feePayer="receiver": threshold = amount * (1 - 0.03) = amount * 0.97
+    //     (SDK asked for sum, receiver gets sum - fee)
+    //   ignoreFee=true: threshold = amount (exact)
     // -------------------------------------------------------------------------
 
-    it("default feePayer=sender: compares against op.amount", async () => {
-      // User sent 5 from card, YooMoney took 0.15 fee, receiver got 4.85.
+    it("default feePayer=sender: accepts when op.amount >= amount", async () => {
+      // SDK asked for sum=5.15 (5 * 1.03), YooMoney took 0.15 fee, receiver got 5.00.
       const body = {
         operations: [
           {
             operation_id: "op1",
             status: "success",
             direction: "in",
-            amount: 4.85,
-            withdraw_amount: 5,
+            amount: 5.00,
             datetime: "2024-01-01T00:00:00.000+03:00",
             title: "Card deposit",
             type: "deposition",
@@ -333,12 +339,36 @@ describe("YooMoneyClient", () => {
       globalThis.fetch = mockFetch(body);
 
       const client = makeClient({ token: TOKEN });
-      // Expecting 5 — op.amount=4.85 < 5 → rejected (default feePayer=sender).
+      const result = await client.checkPaymentByLabel("order-42", { amount: 5 });
+      expect(result.found).toBe(true);
+    });
+
+    it("default feePayer=sender: rejects when op.amount < amount", async () => {
+      // Receiver got only 4.85, but we expected at least 5.00.
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 4.85,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Card deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = makeClient({ token: TOKEN });
       const result = await client.checkPaymentByLabel("order-42", { amount: 5 });
       expect(result.found).toBe(false);
     });
 
-    it("ignoreFee=true: compares against withdraw_amount", async () => {
+    it("feePayer=receiver: accepts when op.amount >= amount * 0.97", async () => {
+      // SDK asked for sum=5, YooMoney took 0.15 fee, receiver got 4.85.
+      // 4.85 >= 5 * 0.97 = 4.85 → accepted.
       const body = {
         operations: [
           {
@@ -346,33 +376,6 @@ describe("YooMoneyClient", () => {
             status: "success",
             direction: "in",
             amount: 4.85,
-            withdraw_amount: 5,
-            datetime: "2024-01-01T00:00:00.000+03:00",
-            title: "Card deposit",
-            type: "deposition",
-            label: "order-42",
-          },
-        ],
-      };
-      globalThis.fetch = mockFetch(body);
-
-      const client = makeClient({ token: TOKEN });
-      const result = await client.checkPaymentByLabel("order-42", {
-        amount: 5,
-        ignoreFee: true,
-      });
-      expect(result.found).toBe(true);
-    });
-
-    it("feePayer=receiver: compares against withdraw_amount", async () => {
-      const body = {
-        operations: [
-          {
-            operation_id: "op1",
-            status: "success",
-            direction: "in",
-            amount: 4.85,
-            withdraw_amount: 5,
             datetime: "2024-01-01T00:00:00.000+03:00",
             title: "Card deposit",
             type: "deposition",
@@ -390,17 +393,93 @@ describe("YooMoneyClient", () => {
       expect(result.found).toBe(true);
     });
 
-    it("feePayer=sender + ignoreFee=false: rejects when withdraw_amount > amount", async () => {
-      // Edge case: sender paid MORE than expected. withdraw_amount=10, amount=9.
-      // feePayer=sender → op.amount=9 → 9 >= 5 → accepted.
+    it("feePayer=receiver: rejects when op.amount < amount * 0.97 (more than 3% fee)", async () => {
+      // SDK asked for sum=5, but receiver got only 4.50 (10% fee — abnormal).
+      // 4.50 < 5 * 0.97 = 4.85 → rejected.
       const body = {
         operations: [
           {
             operation_id: "op1",
             status: "success",
             direction: "in",
-            amount: 9,
-            withdraw_amount: 10,
+            amount: 4.50,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Card deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = makeClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("order-42", {
+        amount: 5,
+        feePayer: "receiver",
+      });
+      expect(result.found).toBe(false);
+    });
+
+    it("ignoreFee=true: exact comparison, no tolerance", async () => {
+      // op.amount = 4.99, expected 5 → rejected (no fee tolerance).
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 4.99,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Card deposit",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = makeClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("order-42", {
+        amount: 5,
+        ignoreFee: true,
+      });
+      expect(result.found).toBe(false);
+    });
+
+    it("ignoreFee=true: accepts when op.amount exactly equals amount", async () => {
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 5.00,
+            datetime: "2024-01-01T00:00:00.000+03:00",
+            title: "Wallet transfer (no fee)",
+            type: "deposition",
+            label: "order-42",
+          },
+        ],
+      };
+      globalThis.fetch = mockFetch(body);
+
+      const client = makeClient({ token: TOKEN });
+      const result = await client.checkPaymentByLabel("order-42", {
+        amount: 5,
+        ignoreFee: true,
+      });
+      expect(result.found).toBe(true);
+    });
+
+    it("overpayment: sender paid more than required, accepted", async () => {
+      // Edge case: op.amount = 10, expected 5 → accepted.
+      const body = {
+        operations: [
+          {
+            operation_id: "op1",
+            status: "success",
+            direction: "in",
+            amount: 10,
             datetime: "2024-01-01T00:00:00.000+03:00",
             title: "Overpay",
             type: "deposition",
@@ -423,7 +502,6 @@ describe("YooMoneyClient", () => {
             status: "success",
             direction: "in",
             amount: 0.01,
-            withdraw_amount: 0.01,
             datetime: "2024-01-01T00:00:00.000+03:00",
             title: "Top-up",
             type: "deposition",

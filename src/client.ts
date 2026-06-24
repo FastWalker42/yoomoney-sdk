@@ -113,39 +113,13 @@ export class YooMoneyClient {
     });
 
     const requireSuccess = opts.requireSuccess !== false;
-    const needsWithdraw = opts.amount !== undefined &&
-      (opts.ignoreFee === true || opts.feePayer === "receiver");
 
-    // First pass: filter by status; if we need withdraw_amount and it's
-    // missing, fetch operation-details to enrich the operation.
-    const candidates = page.operations.filter((op) => {
+    // Compute the threshold that op.amount must reach.
+    const threshold = computeAmountThreshold(opts);
+
+    const operations = page.operations.filter((op) => {
       if (requireSuccess && op.status !== "success") return false;
-      return true;
-    });
-
-    const enriched: Operation[] = [];
-    for (const op of candidates) {
-      if (needsWithdraw && op.withdraw_amount === undefined) {
-        try {
-          const details = await this.getOperationDetails({
-            operation_id: op.operation_id,
-          });
-          enriched.push({ ...op, ...details });
-        } catch {
-          // If details fetch fails, keep the original op — amount check
-          // will fail safe (null) below.
-          enriched.push(op);
-        }
-      } else {
-        enriched.push(op);
-      }
-    }
-
-    const operations = enriched.filter((op) => {
-      if (opts.amount !== undefined) {
-        const effective = effectiveAmount(op, opts);
-        if (effective === null || effective < opts.amount) return false;
-      }
+      if (threshold !== null && op.amount < threshold) return false;
       return true;
     });
 
@@ -355,22 +329,35 @@ function validateCheckOptions(opts: CheckPaymentOptions): void {
 }
 
 /**
- * Resolve which numeric field of an Operation should be compared against the
- * expected `amount`, based on `ignoreFee` and `feePayer` options.
+ * Maximum YooMoney processing fee rate, used as a safety margin.
  *
- * Returns `null` when the required field is absent (e.g. withdraw_amount is
- * missing on plain history responses without `details: true`).
+ * 3% is the worst case (bank card payments). Wallet-to-wallet transfers
+ * are cheaper (0.5%), but using 3% gives a single safe threshold for all
+ * payment methods.
  */
-function effectiveAmount(
-  op: Operation,
-  opts: CheckPaymentOptions,
-): number | null {
-  // ignoreFee=true → always use withdraw_amount (what the sender was charged).
-  // feePayer="receiver" → fee comes out of sum, so withdraw_amount === sum.
-  // feePayer="sender" (default) → fee on top of sum, so op.amount === sum.
-  const useWithdraw = opts.ignoreFee === true || opts.feePayer === "receiver";
-  if (useWithdraw) {
-    return op.withdraw_amount ?? null;
+export const MAX_FEE_RATE = 0.03;
+
+/**
+ * Compute the minimum `op.amount` threshold based on the check options.
+ *
+ * - No `amount` set → returns `null` (open-ended, any positive amount is OK).
+ * - `ignoreFee: true` → threshold = `amount` (exact match, no tolerance).
+ * - `feePayer: "sender"` (default) → threshold = `amount`
+ *   (the SDK asked YooMoney for `sum = amount * 1.03`, so the receiver
+ *   should get at least `amount` after the 3% fee is deducted).
+ * - `feePayer: "receiver"` → threshold = `amount * (1 - MAX_FEE_RATE)`
+ *   (the SDK asked YooMoney for `sum = amount`, so the receiver will get
+ *   `amount - fee` ≈ `amount * 0.97`; we accept up to 3% underpayment).
+ */
+function computeAmountThreshold(opts: CheckPaymentOptions): number | null {
+  if (opts.amount === undefined) return null;
+
+  // ignoreFee → exact comparison, no fee tolerance.
+  if (opts.ignoreFee === true) return opts.amount;
+
+  // feePayer defaults to "sender" — receiver gets exactly `amount`.
+  if (opts.feePayer === "receiver") {
+    return opts.amount * (1 - MAX_FEE_RATE);
   }
-  return op.amount;
+  return opts.amount;
 }

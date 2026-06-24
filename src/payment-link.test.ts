@@ -189,3 +189,77 @@ describe("open-ended payments (sum omitted)", () => {
     ).not.toThrow();
   });
 });
+
+describe("feePayer adjustment (v2.4.0)", () => {
+  it("feePayer=sender: multiplies sum by (1 + MAX_FEE_RATE)", () => {
+    // 5 * 1.03 = 5.15
+    const url = generatePaymentLink({
+      receiver: "410012345",
+      sum: 5,
+      feePayer: "sender",
+    });
+    expect(url).toContain("sum=5.15");
+  });
+
+  it("feePayer=receiver: uses sum as-is (fee will be deducted)", () => {
+    const url = generatePaymentLink({
+      receiver: "410012345",
+      sum: 5,
+      feePayer: "receiver",
+    });
+    expect(url).toContain("sum=5");
+    expect(url).not.toContain("sum=5.");
+  });
+
+  it("feePayer omitted: uses sum as-is", () => {
+    const url = generatePaymentLink({
+      receiver: "410012345",
+      sum: 5,
+    });
+    expect(url).toContain("sum=5");
+  });
+
+  it("feePayer=sender with open-ended (sum omitted): no sum in URL", () => {
+    const url = generatePaymentLink({
+      receiver: "410012345",
+      feePayer: "sender",
+      label: "topup-1",
+    });
+    expect(url).not.toContain("sum=");
+  });
+
+  it("feePayer=sender: rounds sum to 2 decimal places", () => {
+    // 100 * 1.03 = 103 (no decimals needed)
+    const url1 = generatePaymentLink({
+      receiver: "410012345",
+      sum: 100,
+      feePayer: "sender",
+    });
+    expect(url1).toContain("sum=103");
+
+    // 99.99 * 1.03 = 102.9897 → rounds to 102.99
+    const url2 = generatePaymentLink({
+      receiver: "410012345",
+      sum: 99.99,
+      feePayer: "sender",
+    });
+    expect(url2).toContain("sum=102.99");
+  });
+
+  it("generatePaymentForm also adjusts sum for feePayer=sender", () => {
+    const html = generatePaymentForm({
+      receiver: "410012345",
+      sum: 5,
+      feePayer: "sender",
+    });
+    expect(html).toContain('name="sum"');
+    expect(html).toContain('value="5.15"');
+  });
+
+  it("rejects invalid feePayer value", () => {
+    expect(() =>
+      // @ts-expect-error testing runtime guard
+      generatePaymentLink({ receiver: "410012345", sum: 5, feePayer: "split" }),
+    ).toThrow(YooMoneyError);
+  });
+});
